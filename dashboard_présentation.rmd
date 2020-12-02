@@ -1,0 +1,488 @@
+---
+title: "Visualisation des attaques des ours américains"
+author: "N. Boutrand, H. Chassagnon, B. Turban"
+date: "27/11/2020"
+output: 
+  flexdashboard::flex_dashboard:
+    storyboard: true
+    theme: journal
+    orientation: columns
+    vertical_layout: fill
+---
+<style>                     
+.navbar {
+  background-color:darkgreen;
+  border-color:black;
+}
+.navbar-brand {
+color:darkgreen;
+}
+</style> 
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+
+
+### **Représentation cartographique** : les grizzlys plus aggressifs que les ours noirs?
+
+```{r opts.label = "figure1",results='hide'}
+# Importation des packages
+library("sf")
+library("rnaturalearth")
+library("rnaturalearthdata")
+library(tidyverse)
+library(scales)
+library(rgeos)
+library(knitr)
+library(lwgeom)
+library(forcats)
+library(data.table)
+library(ggthemes)
+library("hrbrthemes")
+require("ggrepel")
+library(gdata)
+library(plyr)
+library(srvyr)
+library(ggplot2)
+library(ggpubr)
+# importation du jeu de données sur les ours
+library(readr)
+bear_attacks <- read_csv("C:/data/bear_attacks.prn")
+bear_attacks$age=round(bear_attacks$age,0)
+bear_attacks$gender=as.factor(bear_attacks$gender)
+bear_attacks$date=as.factor(bear_attacks$date)
+bear_attacks$month=as.factor(bear_attacks$month)
+bear_attacks$yearmonth=as.factor(bear_attacks$yearmonth)
+bear_attacks$type=as.factor(bear_attacks$type)
+bear_attacks$date=as.factor(bear_attacks$date)
+bear_attacks$city=as.factor(bear_attacks$city)
+bear_attacks$state=as.factor(bear_attacks$state)
+bear_attacks$type_of_bear=as.factor(bear_attacks$type_of_bear)
+bear_attacks$hunter=as.factor(bear_attacks$hunter)
+bear_attacks$date=as.factor(bear_attacks$date)
+bear_attacks$type_of_bear=as.factor(bear_attacks$type_of_bear)
+bear_attacks$hunter=as.factor(bear_attacks$hunter)
+bear_attacks$grizzly=as.factor(bear_attacks$grizzly)
+bear_attacks$hikers=as.factor(bear_attacks$hikers)
+bear_attacks$only_one_killed=as.factor(bear_attacks$only_one_killed)
+
+summary(bear_attacks)
+bear <- bear_attacks
+
+# Choix des thèmes
+theme_set(theme_light())
+theme_update(
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  panel.border = element_blank(),
+  axis.line = element_line(colour = "black", size=1),
+  
+  panel.background = element_rect(fill = "khaki1"),
+  plot.background = element_rect(fill = 'palegreen3'),
+
+  plot.title = element_text(size = 13, face = "bold", hjust=0, vjust=0),
+  plot.subtitle = element_text(size =11, face = "plain"),
+  plot.caption = element_text(size =9, face = "italic"),
+
+  axis.text.x = element_text(face="plain", color="black",size=10, hjust=1, angle=45),
+  axis.text.y = element_text(face="plain", color="black",size=9, hjust=1),
+  
+  legend.title = element_text(size = 11, face = "bold"),
+  legend.text = element_text(size=9, face = "bold"),
+  legend.background=element_rect(fill="palegreen3")
+  #panel.grid.major = element_blank(),
+  #panel.grid.minor = element_blank(),
+  #plot.title = element_text(size = 14, face = "bold", hjust=0),
+  #plot.subtitle = element_text(size = 8, face = "italic"),
+  #plot.caption = element_text(size = 7, face = "italic"),
+  #axis.text.x = element_text(face="bold", color="black",size=11),
+  #axis.text.y = element_text(face="bold", color="black",size=11),
+  #plot.margin = margin(t = 10, b = 10, r = 10, l = 10),
+  #"opts_template$set(figure1 = list(fig.height = 6, fig.width = 6),
+                     #figure2 = list(fig.height = 2, fig.width = 4),
+  #legend.position = "right",
+  #panel.background = element_rect(fill = "#light blue")
+)
+
+#importation de la carte et concaténation avec les effectifs d'ours
+states_us_canada <- st_read(dsn = "C:/data/USA_Canada_ShapefileMerge")
+states_us_canada %>% st_transform( crs = 4326 )
+states_us_canada$StateName <- str_replace_all(states_us_canada$StateName, c("NUNAVUT"="Nunavut", "NORTHWEST TERRITORIES"="Northwest Territories", "YUKON TERRITORY"="Yukon","BRITISH COLUMBIA"="British Columbia","QUEBEC"="Quebec","ALBERTA"="Alberta","SASKATCHEWAN"="Saskatchewan","MANITOBA"="Manitoba","ONTARIO"="Ontario","NOVA SCOTIA"="Nova Scotia","NEW BRUNSWICK"="New Brunswick"))
+states_us_canada <- cbind(states_us_canada,nb_ours_noir=
+c(8000,8000,10000,130000,70000,"",30000,65000,30000,90000,70000,"",17000,"",100000,"","",150,5000,3000,30000,11000,800,"","",4000,4500,"",25000,"","","","","",1000,700,4500,2000,30000,17000,17000,14000,14000,700,125,15000,20000,"","",6100,5000,5500,400,7000,7000,150,150,2000,30000,20000,20000,"",900,"",7000,35,4000,17000,5200,30000,30000,28000,28000,13000,15000,""),nb_grizzli=c(0,4500,8500,6500,1,0,1200,1,1,1,1,0,1,0,15000,0,0,0,0,0,1,1,0,0,0,0,0,0,300,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,450,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,1,0,100,100,1,1,1,450,0))
+states_us_canada$nb_ours_noir <- as.numeric(states_us_canada$nb_ours_noir)
+states_us_canada$nb_ours <- states_us_canada$nb_ours_noir+states_us_canada$nb_grizzli
+
+#Modification du JDD sur les attaques d'ours
+setnames(bear, "state", "StateName")
+bear_map <- bear %>% filter(type=="Wild",type_of_bear!="Polar Bear") %>% select(StateName,only_one_killed) %>% group_by(StateName=sub("^\\s+", "",StateName))%>%mutate(n=n()) %>% select(StateName,n)
+bear_map <-bear_map[!duplicated(bear_map[,1:2]),]
+
+#Visualisation des attaques par état et par localisation
+bear_park <- bear %>% filter(type=="Wild") %>% group_by(StateName=sub("^\\s+", "",StateName),city)%>% mutate(nb_park=n())%>% select(StateName,city,nb_park)
+bear_park <-bear_park[!duplicated(bear_park[,1:2]),]
+bear_park <-  bear_park[order(bear_park$nb_park, decreasing = TRUE),]
+
+# Visualisation des attaques par état et par type d'ours
+bear_state <- bear %>% filter(type=="Wild") %>% group_by(StateName=sub("^\\s+", "",StateName),type_of_bear)%>% mutate(nb_state=n())%>% select(StateName,nb_state)
+bear_state <-bear_state[!duplicated(bear_state[,1:2]),]
+bear_state <-  bear_state[order(bear_state$nb_state, decreasing = TRUE),]
+
+# Jointure des JDD
+state_complete <- left_join(x=states_us_canada, y = bear_map, by = "StateName")
+# Réalisation de la carte
+
+png_file<-"C:/Users/hecto/OneDrive/Documents/Cours/M2/Visualisation de données/Projet/carte_ours.png"
+png(bg="grey98",png_file,width=12,height=7,units="in",res=200)
+
+state_complete %>% st_transform( crs = 4326 )%>%
+  ggplot() +
+  geom_sf(aes(fill = log(nb_grizzli/nb_ours_noir))) +
+  
+  ylim(27, 81) + xlim(-180,-55)+
+  
+  coord_sf(crs = 4326)+
+  
+  labs(x = "Longitude", y="Latitude")+
+  
+  scale_fill_continuous(low="yellow",high="red",na.value = "grey",name=
+                          "Nb de grizzlies / Nb d'ours noirs \n (échelle log)")+
+  
+  geom_sf_text(aes(label = n),vjust=0,check_overlap=T,fontface="bold",colour="black")+
+  
+  geom_point(x=-110.6137,y=44.7957,size=4,color="#006600")+
+  geom_segment(aes(x=-110.6137,xend=-165,y=44.7957,yend=32),color="#006600")+
+  geom_label(x=-165, y=32, label="Yellowstone Park: \n 8 morts",size=3,color="#006600")+
+  
+  geom_segment(aes(x=-108,xend=-130,y=42.3,yend=28),color="black")+
+  geom_label(x=-130, y=28, label="WYOMING: grizzly responsable de \n 100% des morts",size=3,color="red")+
+  
+  geom_point(x=-114,y=48.48,size=4,color="#006600")+
+  geom_segment(aes(x=-114,xend=-165,y=48.48,yend=46),color="#006600")+
+  geom_label(x=-165, y=46, label="Glacier National Park: \n 10  morts",size=3,color="#006600")+
+  
+  geom_segment(aes(x=-112.3,xend=-160,y=46,yend=40),color="black")+
+  geom_label(x=-160, y=40, label="MONTANA: grizzly responsable de \n 100 % des morts",size=3,color="red")+
+  
+  geom_point(x=-78.21,y=45.35,size=4,color="#006600")+
+  geom_segment(aes(x=-78.21,xend=-65,y=45.35,yend=30),color="#006600")+
+  geom_label(x=-65, y=30, label="Algonquin Provincial Park: \n 5 morts",size=3,color="#006600")+
+  
+  geom_segment(aes(x=-150,xend=-163,y=67,yend=75),color="black")+
+  geom_label(x=-163, y=75, label="ALK: grizzly responsable de \n 75 % des morts",size=3,color="red")+
+  
+  geom_segment(aes(x=-138,xend=-135,y=67,yend=80),color="black")+
+  geom_label(x=-135, y=80, label="YUKON: grizzly responsable de \n 100 % des morts",size=3,color="red")+
+  
+  geom_segment(aes(x=-114,xend=-160,y=58,yend=53),color="black")+
+  geom_label(x=-160, y=53, label="ALBERTA: grizzly responsable de \n 65 % des morts",size=3,color="red")+
+
+  geom_segment(aes(x=-83,xend=-75,y=50,yend=68),color="black")+
+  geom_label(x=-75, y=68, label="ONTARIO: O.noir responsable de \n 100 % des morts",size=3,color="black")+
+  
+  labs(title = "Nombre de morts par état nord-américain du aux attaques d'ours ",
+              subtitle = "De 1900 à aujourd'hui, concerne les ours noirs et les grizzlies",
+              caption = "Data source: Wikipédia, wildlifeinformer, Vox")+
+  theme(panel.background = element_rect(fill = "light blue"))
+              
+  
+  
+  
+  
+dev.off()  
+```
+![Caption for the picture.](C:/Users/hecto/OneDrive/Documents/Cours/M2/Visualisation de données/Projet/carte_ours.png)
+
+### **L'impact de la mise en protection du grizzly sur les attaques**
+
+```{r}
+############ Données GRAPH1 ########################"
+bear_attacks <- read_csv("C:/data/bear_attacks.prn")
+bear <- subset(bear_attacks, type == "Wild")
+bear_wild <- subset(bear, type_of_bear == c("Brown bear"))
+bear_wild$hunter = as.factor(bear_wild$hunter)
+bear_wild$hunter <- fct_recode(bear_wild$hunter, 
+                               "Chasseur" = "1",
+                               "Promeneurs" = "0") 
+
+
+#Regroupement apr periode 
+for (i in 1:71){
+  if (bear_wild[i,6]<=1915){
+    bear_wild[i,6]=1910
+  } else if ((bear_wild[i,6]<=1925 & bear_wild[i,6]>1915)){
+    bear_wild[i,6]=1920
+  } else if ((bear_wild[i,6]<=1935 & bear_wild[i,6]>1925)){
+    bear_wild[i,6]=1930
+  } else if ((bear_wild[i,6]<=1945 & bear_wild[i,6]>1935)){
+    bear_wild[i,6]=1940
+  }else if ((bear_wild[i,6]<=1955 & bear_wild[i,6]>1945)){
+    bear_wild[i,6]=1950
+  } else if ((bear_wild[i,6]<=1965 & bear_wild[i,6]>1955)){
+    bear_wild[i,6]=1960
+  } else if ((bear_wild[i,6]<=1975 & bear_wild[i,6]>1965)){
+    bear_wild[i,6]=1970
+  } else if ((bear_wild[i,6]<=1985 & bear_wild[i,6]>1975)){
+    bear_wild[i,6]=1980
+  } else if ((bear_wild[i,6]<=1995 & bear_wild[i,6]>1985)){
+    bear_wild[i,6]=1990
+  } else if ((bear_wild[i,6]<=2005 & bear_wild[i,6]>1995)){
+    bear_wild[i,6]=2000
+  } else if ((bear_wild[i,6]<=2015 & bear_wild[i,6]>2005)){
+    bear_wild[i,6]=2010
+  } else (bear_wild[i,6] =2020)
+}
+
+
+Grizzli_Attack <- bear_wild %>%
+  select(year, hunter)%>%
+  group_by(year, hunter)%>%
+  mutate(n=n())
+
+Grizzli_Attack <- distinct(Grizzli_Attack, year, hunter, .keep_all= T)
+Grizzli_Attack <- Grizzli_Attack[order(Grizzli_Attack$year),]
+
+################# etiquettes Barplot ###############
+# Trier en fonction de dose et supp
+Grizzli_Attack_sorted <- arrange(Grizzli_Attack, Grizzli_Attack$year, Grizzli_Attack$hunter) 
+
+Gr_A_S_c<- ddply(Grizzli_Attack_sorted, "year",
+                   transform, label_ypos=cumsum(n)-0.5*(n))
+
+#############################Données Graph2 #########################
+bear_wild2 <- subset(bear, type_of_bear == c("Black bear"))
+bear_wild2$hunter = as.factor(bear_wild2$hunter)
+bear_wild2$hunter <- fct_recode(bear_wild2$hunter, 
+                               "Chasseur" = "1",
+                               "Promeneurs" = "0") 
+
+
+#Regroupement apr periode 
+for (i in 1:60){
+  if (bear_wild2[i,6]<=1915){
+    bear_wild2[i,6]=1910
+  } else if ((bear_wild2[i,6]<=1925 & bear_wild2[i,6]>1915)){
+    bear_wild2[i,6]=1920
+  } else if ((bear_wild2[i,6]<=1935 & bear_wild2[i,6]>1925)){
+    bear_wild2[i,6]=1930
+  } else if ((bear_wild2[i,6]<=1945 & bear_wild2[i,6]>1935)){
+    bear_wild2[i,6]=1940
+  }else if ((bear_wild2[i,6]<=1955 & bear_wild2[i,6]>1945)){
+    bear_wild2[i,6]=1950
+  } else if ((bear_wild2[i,6]<=1965 & bear_wild2[i,6]>1955)){
+    bear_wild2[i,6]=1960
+  } else if ((bear_wild2[i,6]<=1975 & bear_wild2[i,6]>1965)){
+    bear_wild2[i,6]=1970
+  } else if ((bear_wild2[i,6]<=1985 & bear_wild2[i,6]>1975)){
+    bear_wild2[i,6]=1980
+  } else if ((bear_wild2[i,6]<=1995 & bear_wild2[i,6]>1985)){
+    bear_wild2[i,6]=1990
+  } else if ((bear_wild2[i,6]<=2005 & bear_wild2[i,6]>1995)){
+    bear_wild2[i,6]=2000
+  } else if ((bear_wild2[i,6]<=2015 & bear_wild[i,6]>2005)){
+    bear_wild2[i,6]=2010
+  } else (bear_wild2[i,6] =2020)
+}
+
+
+BB_Attack <- bear_wild2 %>%
+  select(year, hunter)%>%
+  group_by(year, hunter)%>%
+  mutate(n=n())
+
+BB_Attack <- distinct(BB_Attack, year, hunter, .keep_all= T)
+BB_Attack <- BB_Attack[order(BB_Attack$year),]
+
+################# etiquettes Barplot ###############
+# Trier en fonction de dose et supp
+BB_Attack_sorted <- arrange(BB_Attack, BB_Attack$year, BB_Attack$hunter) 
+
+BB_A_S_c<- ddply(BB_Attack_sorted, "year",
+                   transform, label_ypos=cumsum(n)-0.5*(n))
+
+
+############################ GRAPHIQUES ###############################
+theme_update(
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  panel.border = element_blank(),
+  axis.line = element_line(colour = "black", size=1),
+  
+  panel.background = element_rect(fill = "khaki1"),
+  plot.background = element_rect(fill = 'palegreen3'),
+
+  plot.title = element_text(size = 10, face = "bold", hjust=0, vjust=0),
+  plot.subtitle = element_text(size = 9, face = "plain"),
+  plot.caption = element_text(size = 7, face = "italic"),
+
+  axis.text.x = element_text(face="plain", color="black",size=10, hjust=1, angle=45),
+  axis.text.y = element_text(face="plain", color="black",size=9, hjust=1),
+  
+  legend.title = element_text(size = 7, face = "bold"),
+  legend.text = element_text(size=6, face = "bold"),
+  legend.background=element_rect(fill="palegreen3")
+)
+gg1 <- ggplot(data=Gr_A_S_c, aes(x=Gr_A_S_c$year, y=Gr_A_S_c$n, fill = Gr_A_S_c$hunter))+
+  ylab("Nombre d'attaques") +
+  xlab("")+
+  # je renomme mes axes 
+  
+  ggtitle("Evolution du nombre d'attaques d'ours sur l'humain en Amériques du Nord depuis 1900") +
+  # je met un titre 
+  
+  labs(subtitle = "Par le grizzly", fill = "Victimes :")+
+  
+  geom_bar(stat="identity", color="black", width=7)+
+  scale_fill_manual(values=c('goldenrod1','darkred'))+
+  
+  geom_text(aes(label = Gr_A_S_c$n), color = "black", size=3.5, fontface="bold.italic", vjust=1)+
+  
+  annotate("text", x=1947, y=15, label="Le grizzly devient espèce protégée", col='black', fontface="italic", size=3)+
+  geom_vline(xintercept=1975,col='black', size=0.9, linetype = "dashed")+
+  geom_segment(aes(x=1965,y=12,xend=1973,yend=8), col='black', size=0.7, arrow = arrow(length = unit(1.5, "mm")))+
+  
+  scale_x_continuous(breaks=seq(1900,2020,10))+
+  theme(legend.position = "right",legend.direction="vertical")
+
+
+gg2 <- ggplot(data=BB_A_S_c, aes(x=BB_A_S_c$year, y=BB_A_S_c$n, fill = BB_A_S_c$hunter))+
+  ylab("Nombre d'attaques") +
+  xlab("")+
+  # je renomme mes axes 
+  
+  labs(subtitle = "Par l'ours noir", fill = "Victimes :", caption = "North America Bear Killings - By Ali SANNE -  https://data.world/ajsanne/north-america-bear-killings")+
+  
+  geom_bar(stat="identity", color="black", width=7)+
+  scale_fill_manual(values=c('goldenrod1','darkred'))+
+  
+  geom_text(aes(label = BB_A_S_c$n), color = "black", size=3.5, fontface="bold.italic", vjust=1)+
+  
+  annotate("text", x=1947, y=15, label="Le grizzly devient espèce protégée", col='black', fontface="italic", size=3)+
+  geom_vline(xintercept=1975,col='black', size=0.9, linetype = "dashed")+
+  geom_segment(aes(x=1965,y=13,xend=1973,yend=8), col='black', size=0.7, arrow = arrow(length = unit(1.5, "mm")))+
+  
+  scale_x_continuous(breaks=seq(1900,2020,10))+
+  theme(legend.position = "right",legend.direction="vertical")
+
+ggarrange(gg1, gg2, nrow=2, ncol = 1, common.legend = FALSE)
+```
+
+### **Répartition des attaques sur l'année**
+
+```{r}
+library(readr)
+bear_attacks <- read_csv("C:/data/bear_attacks.prn")
+bear_attacks <- subset(bear_attacks, type=="Wild", .keep_all= T)
+
+library(ggplot2)
+require(tidyverse)
+library(gghighlight) 
+# Ca permet de colorier certaines barres dans les histo donc ca met en valeur 
+library(grid)
+require(gtable)
+library(ggtext)
+library(ggpubr)
+library(cowplot)
+library(plotly)
+
+bear_attacks$month=as.numeric(bear_attacks$month)
+
+mars=data.frame(matrix(0,1,3))
+mars[1,1]=3
+colnames(mars)=c("month","only_one_killed","n")
+
+Month_Attack <- bear_attacks %>%
+  select(month, only_one_killed)%>%
+  group_by(month)%>%
+  mutate(n=n())
+
+Month_Attack <- distinct(Month_Attack, month, .keep_all= T)
+Month_Attack = bind_rows(mars,Month_Attack)
+Month_Attack <- Month_Attack[order(Month_Attack$month),]
+
+Month_Attack$month <- as.factor(Month_Attack$month)
+Month_Attack$month<-fct_recode(Month_Attack$month,
+                         "Janvier"="1",
+                         "Fevrier"="2",
+                         "Mars"="3",
+                         "Avril"="4",
+                         "Mai"="5",
+                         "Juin"="6",
+                         "Juillet"="7",
+                         "Aout"="8",
+                         "Septembre"="9",
+                         "Octobre"="10",
+                         "Novembre"="11",
+                         "Decembre"="12")
+
+
+theme_set(theme_light())
+theme_update(
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  panel.border = element_blank(),
+  axis.line = element_line(colour = "black", size=1),
+  
+  panel.background = element_rect(fill = "khaki1"),
+  plot.background = element_rect(fill = 'palegreen3'),
+
+  plot.title = element_text(size = 11, face = "bold", hjust=0, vjust=1),
+  plot.subtitle = element_text(size = 8, face = "plain"),
+  plot.caption = element_text(size = 7, face = "italic"),
+
+  axis.text.x = element_text(face="plain", color="black",size=6, hjust=1),
+  axis.text.y = element_text(face="plain", color="black",size=9, hjust=1)
+)
+
+month_h <- ggplot(data = Month_Attack, aes(x=Month_Attack$month, y=Month_Attack$n)) +
+  
+  ylab("Nombre d'attaques") +
+  xlab("Mois de l'année") +
+  # je renomme mes axes 
+  
+  labs(caption = "North America Bear Killings - By Ali SANNE -  https://data.world/ajsanne/north-america-bear-killings", subtitle = "En Amériques du Nord depuis 1900")+
+  
+  ggtitle("Répartition des attaques d'ours sur l'humain par mois") +
+  
+  geom_bar(stat="identity", fill="brown", width = 0.5 )+
+  
+  geom_text(aes(label=Month_Attack$n), vjust=-1.5, size=3, fontface="bold.italic")+
+  
+  annotate("rect", xmin="Novembre", xmax = "Decembre", ymin=0, ymax = 32, fill='red', alpha=0.3)+
+  annotate("rect", xmin="Janvier", xmax = "Avril", ymin=0, ymax = 32, fill='red', alpha=0.3)+
+  annotate("rect", xmin="Juin", xmax = "Septembre", ymin=0, ymax = 32, fill='goldenrod1', alpha=0.25)+
+  
+  annotate("text", x="Fevrier", y=20, label="Periode d'hibernation", col='black',   fontface="bold", size=3, hjust=0.25)+
+  annotate("text", x="Aout", y=30, label="Fréquentation maximum des parcs", col='black',   fontface="bold", size=3, hjust=0.58)
+  
+month_d <- ggdensity(
+  bear_attacks, x = "month",
+  alpha = 0, size=1,col='springgreen4'
+) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.4)), position = "right") +
+  
+  theme_half_open(11, rel_small = 1) +
+  rremove("x.axis")+
+  rremove("xlab") +
+  rremove("x.text") +
+  rremove("x.ticks")+
+  rremove("y.axis")+
+  rremove("ylab") +
+  rremove("y.text") +
+  rremove("y.ticks")
+
+aligned_plots <- align_plots(month_h, month_d, align="hv", axis="tblr")
+ggdraw(aligned_plots[[1]]) + draw_plot(aligned_plots[[2]])
+```
+
+### **Les données**
+
+Par Ali SANNE
+
+Voici les 5 premières lignes de nos données.
+Retrouvez le tableau complet à cette adresse : 
+https://data.world/ajsanne/north-america-bear-killings
+```{r}
+head(bear_attacks)
+```
